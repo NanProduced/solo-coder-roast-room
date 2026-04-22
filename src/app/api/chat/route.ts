@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       postImages,
       personality,
       context,
+      conversationHistory,
       isReply,
       shouldBackdown,
       replyToContent,
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
       apiKey,
     });
 
-    const personalityPrompt = `你现在扮演的人格是：${personality.name}（昵称：${personality.nickname}）
+    let personalityPrompt = `你现在扮演的人格是：${personality.name}（昵称：${personality.nickname}）
 
 人格描述：${personality.description}
 
@@ -52,6 +53,15 @@ ${personality.examples.map((e: string) => `- ${e}`).join("\n")}
 4. 用日常口语化的中文表达，像真实的人在评论
 
 请完全进入这个角色，用这个人格的方式说话。记住：保持简短、口语化、像真实的朋友圈评论。`;
+
+    if (conversationHistory && conversationHistory.trim()) {
+      personalityPrompt += `
+
+以下是你和用户的对话历史（按时间顺序）：
+${conversationHistory}
+
+请根据对话历史和你的人设，决定如何回复用户。`;
+    }
 
     let userMessage = "";
 
@@ -106,6 +116,10 @@ ${personality.examples.map((e: string) => `- ${e}`).join("\n")}
     let content = response.choices[0]?.message?.content || "";
 
     content = content.replace(/^["']|["']$/g, "").trim();
+
+    content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+
+    content = content.replace(/\n{3,}/g, "\n\n").trim();
 
     if (shouldBackdown && Math.random() < 0.3) {
       content = "";
