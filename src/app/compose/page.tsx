@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ComposeNavBar } from "@/components/NavigationBar";
-import { ImageUploadGrid } from "@/components/ImageGrid";
 import { Avatar } from "@/components/Avatar";
+import { ImagePlus, MapPin, Users, Bell, HelpCircle } from "lucide-react";
+import Image from "next/image";
 
 const USER_AVATAR =
   "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=friendly%20cartoon%20character%20avatar%20smiling%20warm%20pixel%20art%20style&image_size=square";
@@ -16,6 +17,7 @@ export default function ComposePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [content, setContent] = useState("");
   const [images, setImages] = useState<string[]>([]);
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -102,13 +104,15 @@ export default function ComposePage() {
 
   const canPublish = content.trim() || images.length > 0;
 
+  const remainingSlots = 9 - images.length;
+
   return (
     <div className="flex flex-col h-screen bg-white">
       <ComposeNavBar onPublish={canPublish ? handlePublish : undefined} />
 
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="flex gap-3">
-          <Avatar src={USER_AVATAR} alt={USER_NICKNAME} size="lg" priority />
+      <div className="flex-1 overflow-y-auto bg-white">
+        <div className="p-4 flex gap-3">
+          <Avatar src={USER_AVATAR} alt={USER_NICKNAME} size="md" priority />
 
           <div className="flex-1">
             <textarea
@@ -116,40 +120,163 @@ export default function ComposePage() {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="这一刻的想法..."
-              className="w-full h-40 resize-none text-base text-[#191919] placeholder:text-[#999999] focus:outline-none bg-transparent"
+              className="w-full min-h-[120px] resize-none text-base text-[#191919] placeholder:text-[#C8C8C8] focus:outline-none bg-transparent"
               autoFocus
             />
-
-            <div className="mt-4">
-              <ImageUploadGrid
-                images={images}
-                maxImages={9}
-                onAdd={handleAddImage}
-                onRemove={handleRemoveImage}
-              />
-            </div>
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-[#E6E6E6]">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-[#999999]">
-              {content.length > 0 ? `${content.length}/2000` : "2000字以内"}
-            </span>
-            <span className="text-sm text-[#999999]">
-              {images.length}/9 张图片
-            </span>
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-3 gap-1.5">
+            {images.map((image, index) => (
+              <div
+                key={index}
+                className="relative aspect-square bg-[#F5F5F5] overflow-hidden rounded-sm"
+              >
+                <Image
+                  src={image}
+                  alt={`图片 ${index + 1}`}
+                  fill
+                  className="object-cover"
+                  sizes="120px"
+                  unoptimized
+                />
+                <button
+                  className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/50 rounded-full flex items-center justify-center z-10 hover:bg-black/70 transition-colors"
+                  onClick={() => handleRemoveImage(index)}
+                >
+                  <svg
+                    className="w-3 h-3 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            ))}
+
+            {remainingSlots > 0 && (
+              <button
+                onClick={handleAddImage}
+                className="aspect-square bg-[#FAFAFA] border border-[#E6E6E6] rounded-sm flex flex-col items-center justify-center hover:bg-[#F5F5F5] transition-colors"
+              >
+                <ImagePlus className="w-7 h-7 text-[#B2B2B2] mb-1" />
+                {images.length === 0 && (
+                  <span className="text-xs text-[#B2B2B2]">添加图片</span>
+                )}
+              </button>
+            )}
           </div>
 
-          <div className="mt-4 p-3 bg-[#FFF8E6] rounded-lg">
-            <p className="text-xs text-[#B8860B]">
-              💡 提示：发布后，杠精们会在 5-20 秒内陆续出现并评论你的动态。
-              你可以回复他们，他们会根据人设决定如何回应。
-            </p>
-            <p className="text-xs text-[#B8860B] mt-1">
-              📷 支持 Ctrl+V 粘贴剪贴板中的图片
-            </p>
-          </div>
+          {images.length > 0 && (
+            <div className="mt-2 text-xs text-[#B2B2B2]">
+              图片 {images.length}/9
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-[#E6E6E6]">
+          <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F7F7F7] transition-colors active:bg-[#EDEDED]">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-[#B2B2B2]" />
+              <span className="text-sm text-[#B2B2B2]">所在位置</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-[#B2B2B2]">不显示位置</span>
+              <svg
+                className="w-4 h-4 text-[#C8C8C8]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </button>
+
+          <div className="border-t border-[#E6E6E6]" />
+
+          <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F7F7F7] transition-colors active:bg-[#EDEDED]">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-[#B2B2B2]" />
+              <span className="text-sm text-[#B2B2B2]">谁可以看</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-[#B2B2B2]">公开</span>
+              <svg
+                className="w-4 h-4 text-[#C8C8C8]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </button>
+
+          <div className="border-t border-[#E6E6E6]" />
+
+          <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F7F7F7] transition-colors active:bg-[#EDEDED]">
+            <div className="flex items-center gap-2">
+              <Bell className="w-5 h-5 text-[#B2B2B2]" />
+              <span className="text-sm text-[#B2B2B2]">提醒谁看</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <svg
+                className="w-4 h-4 text-[#C8C8C8]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </button>
+        </div>
+
+        <div className="h-20" />
+      </div>
+
+      <div className="fixed bottom-4 right-4 z-20">
+        <div className="relative">
+          <button
+            className="w-9 h-9 flex items-center justify-center text-[#B2B2B2] hover:text-[#576B95] transition-colors"
+            onMouseEnter={() => setShowHelp(true)}
+            onMouseLeave={() => setShowHelp(false)}
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
+
+          {showHelp && (
+            <div className="absolute bottom-full right-0 mb-2 w-64 bg-[#333333] text-white text-xs px-3 py-2 rounded shadow-lg">
+              <p className="mb-1">💡 发布后，杠精们会在 5-20 秒内陆续出现并评论你的动态。</p>
+              <p className="mb-1">💬 你可以回复他们，他们会根据人设决定如何回应。</p>
+              <p>📷 支持 Ctrl+V 粘贴剪贴板中的图片</p>
+              <div className="absolute bottom-0 right-4 translate-y-1/2 w-2 h-2 bg-[#333333] rotate-45" />
+            </div>
+          )}
         </div>
       </div>
 
