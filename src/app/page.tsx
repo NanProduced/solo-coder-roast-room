@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, X, Settings, Trash2 } from "lucide-react";
+import { Camera, X, Settings, Trash2, AlertCircle } from "lucide-react";
 import { MomentsNavBar } from "@/components/NavigationBar";
 import { MomentCard, EmptyMoment } from "@/components/MomentCard";
 import { BottomCommentInput } from "@/components/TypingIndicator";
@@ -16,9 +16,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { generateId, randomDelay } from "@/lib/utils";
-import { getRandomPersonality, PERSONALITIES } from "@/lib/personalities";
-import type { Post, Comment, Like } from "@/types";
+import { cn, generateId, randomDelay } from "@/lib/utils";
+import { getRandomPersonality, PERSONALITIES, getPersonalityById } from "@/lib/personalities";
+import type { Post, Comment, Like, Personality } from "@/types";
 
 const USER_AVATAR =
   "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=friendly%20cartoon%20character%20avatar%20smiling%20warm%20pixel%20art%20style&image_size=square";
@@ -26,7 +26,13 @@ const USER_NICKNAME = "我";
 
 interface TypingState {
   personalityId: string;
-  personality: typeof PERSONALITIES[0];
+  personality: Personality;
+}
+
+interface ToastState {
+  show: boolean;
+  message: string;
+  type: "error" | "success";
 }
 
 export default function HomePage() {
@@ -42,9 +48,16 @@ export default function HomePage() {
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [postToEnd, setPostToEnd] = useState<string | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [toast, setToast] = useState<ToastState>({ show: false, message: "", type: "error" });
 
   const activeTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const pendingCommentsRef = useRef<Map<string, { comment: Comment; delay: number }>>(new Map());
+
+  const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast((prev) => ({ ...prev, show: false }));
+    }, 3000);
+  }, []);
 
   const handlePublish = () => {
     router.push("/compose");
@@ -165,6 +178,7 @@ export default function HomePage() {
       const shouldBackdown = Math.random() < behavior.backdownProbability;
 
       let replyContent = "";
+      let apiError = false;
 
       try {
         const response = await fetch("/api/chat", {
@@ -185,12 +199,29 @@ export default function HomePage() {
 
         if (response.ok) {
           const data = await response.json();
-          replyContent = data.content || personality.examples[0];
+          if (data.error) {
+            apiError = true;
+            showToast(data.error, "error");
+          } else {
+            replyContent = data.content || "";
+          }
         } else {
-          replyContent = getFallbackReply(personality, userComment.content, shouldBackdown);
+          apiError = true;
+          const errorData = await response.json().catch(() => ({}));
+          showToast(errorData.error || `API 请求失败 (${response.status})`, "error");
         }
-      } catch {
-        replyContent = getFallbackReply(personality, userComment.content, shouldBackdown);
+      } catch (error) {
+        apiError = true;
+        showToast(error instanceof Error ? error.message : "网络请求失败，请检查网络连接", "error");
+      }
+
+      if (apiError) {
+        setTypingStates((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(personality.id);
+          return newMap;
+        });
+        return;
       }
 
       if (!replyContent || replyContent.trim() === "") {
@@ -242,41 +273,29 @@ export default function HomePage() {
     activeTimeoutsRef.current.set(generateId(), timeoutId);
   };
 
-  const getFallbackReply = (
-    personality: typeof PERSONALITIES[0],
-    userContent: string,
-    shouldBackdown: boolean
-  ): string => {
-    if (shouldBackdown) {
-      return "算了，不想说了";
-    }
-    const examples = personality.examples;
-    return examples[Math.floor(Math.random() * examples.length)];
-  };
+  const getUniquePersonalities = useCallback((
+    count: number,
+    excludeIds: Set<string> = new Set()
+  ): Personality[] => {
+    const available = PERSONALITIES.filter((p) => !excludeIds.has(p.id));
+    const shuffled = [...available].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, Math.min(count, shuffled.length));
+  }, []);
 
   const startCommentSimulation = useCallback((post: Post) => {
     const numComments = Math.floor(Math.random() * 4) + 2;
 
-    for (let i = 0; i < numComments; i++) {
-      const personality = getRandomPersonality();
-      const delay = randomDelay(
-        personality.behavior.commentDelay[0] + i * 3,
-        personality.behavior.commentDelay[1] + i * 5
-      );
+    const usedPersonalityIds = new Set<string>();
 
-      const commentId = generateId();
-      pendingCommentsRef.current.set(commentId, {
-        comment: {
-          id: commentId,
-          postId: post.id,
-          personalityId: personality.id,
-          personality: personality,
-          content: "",
-          timestamp: 0,
-          isUser: false,
-        } as Comment,
-        delay,
-      });
+    const personalities = getUniquePersonalities(numComments, usedPersonalityIds);
+
+    personalities.forEach((personality, index) => {
+      usedPersonalityIds.add(personality.id);
+
+      const delay = randomDelay(
+        personality.behavior.commentDelay[0] + index * 3,
+        personality.behavior.commentDelay[1] + index * 5
+      );
 
       const typingTimeoutId = setTimeout(() => {
         setTypingStates((prev) => {
@@ -291,6 +310,7 @@ export default function HomePage() {
 
       const commentTimeoutId = setTimeout(async () => {
         let commentContent = "";
+        let apiError = false;
 
         try {
           const response = await fetch("/api/chat", {
@@ -309,12 +329,29 @@ export default function HomePage() {
 
           if (response.ok) {
             const data = await response.json();
-            commentContent = data.content || personality.examples[0];
+            if (data.error) {
+              apiError = true;
+              showToast(data.error, "error");
+            } else {
+              commentContent = data.content || "";
+            }
           } else {
-            commentContent = personality.examples[Math.floor(Math.random() * personality.examples.length)];
+            apiError = true;
+            const errorData = await response.json().catch(() => ({}));
+            showToast(errorData.error || `API 请求失败 (${response.status})`, "error");
           }
-        } catch {
-          commentContent = personality.examples[Math.floor(Math.random() * personality.examples.length)];
+        } catch (error) {
+          apiError = true;
+          showToast(error instanceof Error ? error.message : "网络请求失败，请检查网络连接", "error");
+        }
+
+        if (apiError) {
+          setTypingStates((prev) => {
+            const newMap = new Map(prev);
+            newMap.delete(personality.id);
+            return newMap;
+          });
+          return;
         }
 
         if (!commentContent) return;
@@ -374,8 +411,8 @@ export default function HomePage() {
 
       activeTimeoutsRef.current.set(generateId(), typingTimeoutId);
       activeTimeoutsRef.current.set(generateId(), commentTimeoutId);
-    }
-  }, []);
+    });
+  }, [getUniquePersonalities, showToast]);
 
   const handleEndSimulation = (postId: string) => {
     setPostToEnd(postId);
@@ -416,27 +453,28 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const content = params.get("content");
-    const imagesParam = params.get("images");
+    try {
+      const draftStr = localStorage.getItem("roast_room_draft");
+      if (draftStr) {
+        const draft = JSON.parse(draftStr);
 
-    if (content || imagesParam) {
-      const images = imagesParam ? JSON.parse(decodeURIComponent(imagesParam)) : [];
+        const newPost: Post = {
+          id: generateId(),
+          content: draft.content || "",
+          images: draft.images || [],
+          timestamp: Date.now(),
+          comments: [],
+          likes: [],
+          isActive: true,
+        };
 
-      const newPost: Post = {
-        id: generateId(),
-        content: content || "",
-        images: images,
-        timestamp: Date.now(),
-        comments: [],
-        likes: [],
-        isActive: true,
-      };
+        setPosts((prev) => [newPost, ...prev]);
+        startCommentSimulation(newPost);
 
-      setPosts((prev) => [newPost, ...prev]);
-      startCommentSimulation(newPost);
-
-      window.history.replaceState({}, "", window.location.pathname);
+        localStorage.removeItem("roast_room_draft");
+      }
+    } catch (error) {
+      console.error("Failed to load draft:", error);
     }
   }, [startCommentSimulation]);
 
@@ -542,6 +580,22 @@ export default function HomePage() {
             setShowCommentInput(false);
           }}
         />
+      )}
+
+      {toast.show && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg",
+              toast.type === "error"
+                ? "bg-[#FF4D4F] text-white"
+                : "bg-[#07C160] text-white"
+            )}
+          >
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm">{toast.message}</span>
+          </div>
+        </div>
       )}
 
       <Dialog open={showEndDialog} onOpenChange={setShowEndDialog}>

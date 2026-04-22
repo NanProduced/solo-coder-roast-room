@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ComposeNavBar } from "@/components/NavigationBar";
 import { ImageUploadGrid } from "@/components/ImageGrid";
@@ -13,8 +13,40 @@ const USER_NICKNAME = "我";
 export default function ComposePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [content, setContent] = useState("");
   const [images, setImages] = useState<string[]>([]);
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      const remainingSlots = 9 - images.length;
+      if (remainingSlots <= 0) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const result = event.target?.result as string;
+              setImages((prev) => {
+                if (prev.length >= 9) return prev;
+                return [...prev, result];
+              });
+            };
+            reader.readAsDataURL(file);
+            break;
+          }
+        }
+      }
+    };
+
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [images.length]);
 
   const handleAddImage = () => {
     fileInputRef.current?.click();
@@ -52,15 +84,20 @@ export default function ComposePage() {
       return;
     }
 
-    const params = new URLSearchParams();
-    if (content.trim()) {
-      params.set("content", content.trim());
-    }
-    if (images.length > 0) {
-      params.set("images", encodeURIComponent(JSON.stringify(images)));
-    }
+    try {
+      const draftData = {
+        content: content.trim(),
+        images: images,
+        timestamp: Date.now(),
+      };
 
-    router.push(`/?${params.toString()}`);
+      localStorage.setItem("roast_room_draft", JSON.stringify(draftData));
+
+      router.push("/");
+    } catch (error) {
+      console.error("Failed to save draft:", error);
+      alert("保存失败，请重试");
+    }
   };
 
   const canPublish = content.trim() || images.length > 0;
@@ -75,6 +112,7 @@ export default function ComposePage() {
 
           <div className="flex-1">
             <textarea
+              ref={textareaRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="这一刻的想法..."
@@ -107,6 +145,9 @@ export default function ComposePage() {
             <p className="text-xs text-[#B8860B]">
               💡 提示：发布后，杠精们会在 5-20 秒内陆续出现并评论你的动态。
               你可以回复他们，他们会根据人设决定如何回应。
+            </p>
+            <p className="text-xs text-[#B8860B] mt-1">
+              📷 支持 Ctrl+V 粘贴剪贴板中的图片
             </p>
           </div>
         </div>
