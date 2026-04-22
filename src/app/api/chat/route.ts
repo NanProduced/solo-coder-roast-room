@@ -49,9 +49,9 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json(
         {
-          content: personality.examples[Math.floor(Math.random() * personality.examples.length)],
+          error: "API Key 未配置，请在 .env.local 文件中设置 OPENAI_API_KEY",
         },
-        { status: 200 }
+        { status: 500 }
       );
     }
 
@@ -111,8 +111,6 @@ export async function POST(request: NextRequest) {
       temperature: 0.8,
       max_tokens: 150,
       top_p: 1,
-      frequency_penalty: 0.3,
-      presence_penalty: 0.3,
     });
 
     let content = response.choices[0]?.message?.content || "";
@@ -124,25 +122,31 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ content });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Chat API error:", error);
 
-    const fallbackExamples = [
-      "呵呵，有意思",
-      "难道只有我一个人觉得不对吗？",
-      "恕我直言，你这想法有问题",
-      "那可不一定，我觉得不是这样",
-      "又能怎样呢，还不是一样",
-      "凭什么这么说？",
-      "我倒是觉得这个很一般啊",
-      "不是我说你，你这也太...",
-    ];
+    let errorMessage = "API 请求失败";
+
+    if (error?.status === 401) {
+      errorMessage = "API Key 无效，请检查 OPENAI_API_KEY 配置";
+    } else if (error?.status === 400) {
+      errorMessage = error?.message || "请求参数错误，请检查模型配置";
+    } else if (error?.status === 404) {
+      errorMessage = "API 地址不存在，请检查 OPENAI_BASE_URL 配置";
+    } else if (error?.status === 429) {
+      errorMessage = "API 请求频率超限，请稍后重试";
+    } else if (error?.status === 500) {
+      errorMessage = "API 服务器内部错误";
+    } else if (error?.message) {
+      errorMessage = error.message;
+    }
 
     return NextResponse.json(
       {
-        content: fallbackExamples[Math.floor(Math.random() * fallbackExamples.length)],
+        error: errorMessage,
+        details: error?.message || String(error),
       },
-      { status: 200 }
+      { status: error?.status || 500 }
     );
   }
 }
