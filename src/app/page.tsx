@@ -144,6 +144,24 @@ export default function HomePage() {
     }
   };
 
+  const getConversationHistory = (post: Post, personalityId: string): string => {
+    const relevantComments = post.comments.filter(
+      (c) => c.personalityId === personalityId || c.isUser
+    );
+
+    const history: string[] = [];
+    relevantComments.forEach((c) => {
+      const speaker = c.isUser ? USER_NICKNAME : c.personality.nickname;
+      let message = `${speaker}：${c.content}`;
+      if (c.replyTo) {
+        message = `${speaker} 回复 ${c.replyTo.nickname}：${c.content}`;
+      }
+      history.push(message);
+    });
+
+    return history.join("\n");
+  };
+
   const triggerAIReply = async (
     postId: string,
     userComment: Comment,
@@ -176,6 +194,7 @@ export default function HomePage() {
       if (!post) return;
 
       const shouldBackdown = Math.random() < behavior.backdownProbability;
+      const conversationHistory = getConversationHistory(post, personality.id);
 
       let replyContent = "";
       let apiError = false;
@@ -191,6 +210,7 @@ export default function HomePage() {
             postImages: post.images,
             personality: personality,
             context: `用户刚才回复了"${originalAIComment.content}"说："${userComment.content}"。请根据你的人设决定是继续怼回去还是态度软化或已读不回。`,
+            conversationHistory: conversationHistory,
             isReply: true,
             shouldBackdown: shouldBackdown,
             replyToContent: userComment.content,

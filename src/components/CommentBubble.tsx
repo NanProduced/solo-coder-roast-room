@@ -82,7 +82,11 @@ export function CommentSection({
   newCommentId,
   className,
 }: CommentSectionProps) {
-  if (comments.length === 0) return null;
+  const validComments = comments.filter(
+    (c) => c.content && c.content.trim() && c.content.trim().length > 0
+  );
+
+  if (validComments.length === 0) return null;
 
   return (
     <div
@@ -93,7 +97,7 @@ export function CommentSection({
     >
       <div className="absolute -top-1.5 left-6 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#F5F5F5]" />
 
-      {comments.map((comment, index) => (
+      {validComments.map((comment, index) => (
         <div key={comment.id}>
           <CommentBubble
             comment={comment}
@@ -101,7 +105,7 @@ export function CommentSection({
             onReply={onReply}
             animate={comment.id === newCommentId}
           />
-          {index < comments.length - 1 && (
+          {index < validComments.length - 1 && (
             <div className="border-b border-[#E6E6E6] mx-2" />
           )}
         </div>
